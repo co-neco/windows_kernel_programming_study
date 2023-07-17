@@ -84,16 +84,19 @@ void DisplayInfo(BYTE* buffer, int size) {
 					printf("created ");
 				else
 					printf("exited ");
-				printf("in process %d, ", tcInfo->processId);
+				printf("in process %d", tcInfo->processId);
 
 				if (tcInfo->remoteProcessNameLength != 0) {
 
+					printf(", ");
 					std::wstring remoteProcessName((const wchar_t*)(buffer + tcInfo->remoteProcessNameOffset), tcInfo->remoteProcessNameLength);
 					printf("(remote ");
 					if (tcInfo->remoteParentProcess)
 						printf("parent ");
 					printf("process[id:% d]: % ws)", tcInfo->remoteProcessId, remoteProcessName.c_str());
 				}
+				else
+					printf("\n");
 
 				break;
 			}
@@ -127,6 +130,38 @@ void DisplayInfo(BYTE* buffer, int size) {
 				}*/
 				break;
 			}
+			case ItemType::RegPostSetValue: {
+
+				DisplayTime(data->time);
+
+				auto info = (RegPostSetValueInfo*)buffer;
+				std::wstring keyName((const wchar_t*)(buffer + info->keyNameOffset), info->keyNameLength);
+				std::wstring valueName((const wchar_t*)(buffer + info->valueNameOffset), info->valueNameLength);
+				printf("Registry write pid=%d, tid=%d, %ws\\%ws, type: %d, size: %d, data: ",
+					info->processId, info->threadId,
+					keyName.c_str(), valueName.c_str(),
+					info->dataType, info->dataLength);
+
+				void* data = buffer + info->dataOffset;
+				switch (info->dataType) {
+					case REG_DWORD: {
+						printf("0x%08X", *(DWORD*)data);
+						break;
+					}
+					case REG_SZ:
+					case REG_EXPAND_SZ: {
+						std::wstring dataStr((const wchar_t*)data, info->dataLength / sizeof(WCHAR));
+						printf("%ws", dataStr.c_str());
+						break;
+					}
+					default: {
+						DisplayBinary((BYTE*)data, info->dataLength);
+						break;
+					}
+				}
+				printf("\n");
+				break;
+			}
 			default: {
 				std::cout << "Unknown type: " << static_cast<int>(data->type) << std::endl;
 				assert(false);
@@ -146,6 +181,12 @@ void DisplayTime(LARGE_INTEGER time) {
 
 	FileTimeToSystemTime((FILETIME*)&time, &st);
 	printf("%02d:%02d:%02d:%03d: ", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+}
+
+void DisplayBinary(BYTE* data, ULONG len) {
+
+	for (ULONG i = 0; i < len; ++i)
+		printf(" 0x%02X", data[i]);
 }
 
 const std::string GetProcessNamePath(DWORD dwProcessId)

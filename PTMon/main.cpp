@@ -56,6 +56,14 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING) {
 			KdPrint((DRIVER_PREFIX "failed to register image load callback 0x%08X", status));
 			break;
 		}
+
+		UNICODE_STRING regAltitude = RTL_CONSTANT_STRING(L"7657.124");
+		status = CmRegisterCallbackEx(OnRegistryNotify, &regAltitude, driverObject, NULL, &g_globalData.regCookie, NULL);
+		if (!NT_SUCCESS(status)) {
+			KdPrint((DRIVER_PREFIX "failed to register registry callback"));
+			break;
+		}
+
 	} while (false);
 
 	if (!NT_SUCCESS(status)) {
@@ -290,6 +298,66 @@ void OnImageNotify(PUNICODE_STRING fullImageName, HANDLE processId, PIMAGE_INFO 
 	PushItem(&item->entry);
 }
 
+NTSTATUS OnRegistryNotify(PVOID CallbackContext, PVOID argument1, PVOID argument2) {
+	UNREFERENCED_PARAMETER(CallbackContext);
+	
+	switch ((REG_NOTIFY_CLASS)(ULONG_PTR)argument1) {
+	case RegNtPostSetValueKey: {
+
+		auto args = (REG_POST_OPERATION_INFORMATION*)argument2;
+		if (!NT_SUCCESS(args->Status))
+			break;
+
+		static const WCHAR machine[] = L"\\REGISTRY\\MACHINE\\";
+
+		PCUNICODE_STRING name;
+		if (!NT_SUCCESS(CmCallbackGetKeyObjectID(&g_globalData.regCookie, args->Object, NULL, &name)))
+			break;
+
+		if (_wcsnicmp(name->Buffer, machine, ARRAYSIZE(machine) - 1) != 0)
+			break;
+		
+		auto preInfo = (REG_SET_VALUE_KEY_INFORMATION*)args->PreInformation;
+		NT_ASSERT(preInfo);
+
+		auto allocSize = sizeof(Item<RegPostSetValueInfo>) + name->Length + preInfo->ValueName->Length + preInfo->DataSize;
+		auto info = (Item<RegPostSetValueInfo>*)ExAllocatePoolWithTag(PagedPool, allocSize, DRIVER_TAG);
+		if (!info) {
+			KdPrint((DRIVER_PREFIX "Allocate paged pool failed"));
+			break;
+		}
+
+		RtlZeroMemory(info, allocSize);
+		auto& item = info->data;
+		KeQuerySystemTime(&item.time);
+		item.size = sizeof(item) + name->Length + preInfo->ValueName->Length + preInfo->DataSize;
+		item.type = ItemType::RegPostSetValue;
+		item.dataType = preInfo->Type;
+
+		item.processId = HandleToUlong(PsGetCurrentProcessId());
+		item.threadId = HandleToUlong(PsGetCurrentThreadId());
+		
+		memcpy((UCHAR*)&item + sizeof(item), name->Buffer, name->Length);
+		item.keyNameLength = name->Length / sizeof(WCHAR);
+		item.keyNameOffset = sizeof(item);
+
+		memcpy((UCHAR*)&item + sizeof(item) + name->Length, preInfo->ValueName->Buffer, preInfo->ValueName->Length);
+		item.valueNameLength = preInfo->ValueName->Length / sizeof(WCHAR);
+		item.valueNameOffset = sizeof(item) + name->Length;
+
+		memcpy((UCHAR*)&item + sizeof(item) + name->Length + preInfo->ValueName->Length, preInfo->Data, preInfo->DataSize);
+		item.dataLength = preInfo->DataSize;
+		item.dataOffset = sizeof(item) + name->Length + preInfo->ValueName->Length;
+
+		PushItem(&info->entry);
+
+		break;
+	}
+	}
+
+	return STATUS_SUCCESS;
+}
+
 void PTMonUnload(PDRIVER_OBJECT driverObject) {
 
 	while (g_globalData.itemCount > 0) {
@@ -303,6 +371,7 @@ void PTMonUnload(PDRIVER_OBJECT driverObject) {
 	PsSetCreateProcessNotifyRoutineEx(OnProcessNotify, TRUE);
 	PsRemoveCreateThreadNotifyRoutine(OnThreadNotify);
 	PsRemoveLoadImageNotifyRoutine(OnImageNotify);
+	CmUnRegisterCallback(g_globalData.regCookie);
 
 	UNICODE_STRING symLink = RTL_CONSTANT_STRING(L"\\??\\ptmon");
 	IoDeleteSymbolicLink(&symLink);

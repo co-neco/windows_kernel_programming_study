@@ -15,6 +15,7 @@ struct GlobalData {
 	WCHAR* exePath[MAX_EXE_PATH_NUM];
 	USHORT exePathNum;
 	FastMutex exePathMutex;
+	LARGE_INTEGER regCookie;
 };
 
 template <typename T>
@@ -31,6 +32,11 @@ void OnImageNotify(
     HANDLE ProcessId,                // pid into which image is being mapped
     PIMAGE_INFO ImageInfo
     );
+
+NTSTATUS OnRegistryNotify(
+	PVOID CallbackContext,
+	PVOID argument1,
+	PVOID argument2);
 
 void PTMonUnload(PDRIVER_OBJECT driverObject);
 NTSTATUS PTMonCreate(PDEVICE_OBJECT deviceObject, PIRP irp);

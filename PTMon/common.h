@@ -10,12 +10,13 @@ enum class ItemType : short {
 	ProcessExit,
 	ThreadCreate,
 	ThreadExit,
-	ImageLoad
+	ImageLoad,
+	RegPostSetValue,
 };
 
 struct ItemHeader {
 	ItemType type;
-	USHORT size;
+	ULONG size;
 	LARGE_INTEGER time;
 };
 
@@ -51,4 +52,16 @@ struct ImageLoadInfo : ItemHeader {
 	PVOID imageBase;
 	ULONG imageFileNameLength;
 	ULONG imageFileNameOffset;
+};
+
+struct RegPostSetValueInfo : ItemHeader {
+	ULONG processId;
+	ULONG threadId;
+	USHORT keyNameLength;
+	USHORT keyNameOffset;
+	USHORT valueNameLength;
+	USHORT valueNameOffset;
+	ULONG dataLength;
+	USHORT dataOffset;
+	ULONG dataType;
 };
