@@ -1,14 +1,13 @@
 
 #include <windows.h>
 #include <iostream>
-#include <vector>
 #include <string>
 
-#include "../FsFilterProtector/common.h"
+#include "../DevMon/common.h"
 
 int wmain(int argc, const wchar_t* argv[]) {
 
-	if (argc < 2) {
+	if (argc != 3) {
 		std::cout << "Insufficient parameters\n";
 		return 0;
 	}
@@ -29,31 +28,29 @@ int wmain(int argc, const wchar_t* argv[]) {
 		return -1;
 	}
 
-	HANDLE hFile = CreateFileW(L"\\\\.\\del_protect", GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, nullptr);
+	HANDLE hFile = CreateFileW(L"\\\\.\\KDevMon", GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, nullptr);
 	if (hFile == INVALID_HANDLE_VALUE) {
 		std::cout << "Can not open delection protector\n";
 		return -1;
 	}
 
-	std::vector<std::wstring> dirs;
-	for (int idx = 2; idx < argc; ++idx) {
-		dirs.push_back(argv[idx]);
-	}
+	std::wstring devName(argv[2]);
+	std::wcout << L"devName: " << devName << L"\n";
 
 	BOOL bOk = TRUE;
 	DWORD dwBytesReturned;
 
 	switch (option) {
 	case Options::Add: {
-		bOk = DeviceIoControl(hFile, IOCTL_DELPROTECT_ADD_DIR, (LPVOID)(dirs[0].c_str()), (DWORD)((dirs[0].size() + 1) * sizeof(WCHAR)), NULL, 0, &dwBytesReturned, NULL);
+		bOk = DeviceIoControl(hFile, IOCTL_DEVMON_ADD_DEVICE, (LPVOID)devName.c_str(), (DWORD)((devName.length() + 1) * sizeof(WCHAR)), NULL, 0, &dwBytesReturned, NULL);
 		break;
 		}
 	case Options::Remove: {
-		bOk = DeviceIoControl(hFile, IOCTL_DELPROTECT_REMOVE_DIR, (LPVOID)(dirs[0].c_str()), (DWORD)((dirs[0].size() + 1) * sizeof(WCHAR)), NULL, 0, &dwBytesReturned, NULL);
+		bOk = DeviceIoControl(hFile, IOCTL_DEVMON_REMOVE_DEVICE, (LPVOID)devName.c_str(), (DWORD)((devName.length() + 1) * sizeof(WCHAR)), NULL, 0, &dwBytesReturned, NULL);
 		break;
 	}
 	case Options::Clear: {
-		bOk = DeviceIoControl(hFile, IOCTL_DELPROTECT_CLEAR_DIR, NULL, 0, NULL, 0, &dwBytesReturned, NULL);
+		bOk = DeviceIoControl(hFile, IOCTL_DEVMON_REMOVE_ALL_DEVICE, NULL, 0, NULL, 0, &dwBytesReturned, NULL);
 		break;
 	}
 	}
